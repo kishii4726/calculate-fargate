@@ -1,4 +1,4 @@
-module calculate_fargate
+module calculate-fargate
 
 go 1.17
 

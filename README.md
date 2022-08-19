@@ -1,1 +1,1 @@
-# calculate_fargate
+# calculate-fargate
