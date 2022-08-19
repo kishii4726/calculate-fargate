@@ -2,14 +2,16 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ecs"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/olekukonko/tablewriter"
 )
 
 func getEcsClusters(c *ecs.Client) []string {
@@ -85,23 +87,28 @@ func main() {
 	if err != nil {
 		log.Fatalf("unable to load SDK config, %v", err)
 	}
-	client := ecs.NewFromConfig(cfg)
+	ecs := ecs.NewFromConfig(cfg)
+	sts := sts.NewFromConfig(cfg)
+	clusters_table := tablewriter.NewWriter(os.Stdout)
+	clusters_table.SetHeader([]string{"CLUSTER NAME", "NUMBER OF TASKS"})
+	total_table := tablewriter.NewWriter(os.Stdout)
+	total_table.SetHeader([]string{"AWS ACCOUNT", "NUMBER OF CONTAINERS"})
 	var total_tasks_in_the_account int
 	var total_containers_in_the_account int
-	for _, cluster := range getEcsClusters(client) {
+	for _, cluster := range getEcsClusters(ecs) {
 		number_of_tasks_in_cluster := []string{}
-		fmt.Println("Cluster name: " + cluster)
-		for _, service_arn := range getEcsServices(client, cluster) {
-			for _, task_id := range getEcsTaskIds(client, cluster, service_arn) {
+		for _, service_arn := range getEcsServices(ecs, cluster) {
+			for _, task_id := range getEcsTaskIds(ecs, cluster, service_arn) {
 				number_of_tasks_in_cluster = append(number_of_tasks_in_cluster, task_id)
-				total_containers_in_the_account += len(getContainers(client, cluster, task_id))
+				total_containers_in_the_account += len(getContainers(ecs, cluster, task_id))
 			}
 		}
 		total_tasks_in_the_account += len(number_of_tasks_in_cluster)
-		fmt.Println("Number of tasks in cluster: " + strconv.Itoa(len(number_of_tasks_in_cluster)))
+		clusters_table.Append([]string{cluster, strconv.Itoa(len(number_of_tasks_in_cluster))})
 	}
 
-	fmt.Println("")
-	fmt.Println("Total number of tasks in account: " + strconv.Itoa(total_tasks_in_the_account))
-	fmt.Println("Total number of containers in account: " + strconv.Itoa(total_containers_in_the_account))
+	resp, err := sts.GetCallerIdentity(context.TODO(), nil)
+	total_table.Append([]string{*resp.Account, strconv.Itoa(total_containers_in_the_account)})
+	total_table.Render()
+	clusters_table.Render()
 }
